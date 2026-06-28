@@ -1,0 +1,305 @@
+{
+  "name": "Ticket",
+  "nodes": [
+    {
+      "parameters": {
+        "mailbox": "Ticket",
+        "postProcessAction": "nothing",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.emailReadImap",
+      "typeVersion": 2.1,
+      "position": [
+        -448,
+        0
+      ],
+      "id": "cd273fec-b303-4e64-ab02-7c1277cfad39",
+      "name": "Email Trigger (IMAP)",
+      "credentials": {
+        "imap": {
+          "id": "KVcHOrzB0sUAwLm4",
+          "name": "IMAP account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Sei un sistema AI di classificazione helpdesk.\n\nREGOLE OBBLIGATORIE:\n- NON scrivere testo prima o dopo il JSON\n- NON scrivere \"Input\", \"Output\", spiegazioni o saluti\n- RISPOSTA = SOLO JSON VALIDO\n- NON usare markdown\n- NON aggiungere commenti\n\nFORMATO OBBLIGATORIO:\n\n{\n  \"categoria\": \"\",\n  \"priorita\": \"\",\n  \"sentimento\": \"\",\n  \"risposta\": \"\"\n}\n\nCATEGORIE:\n- Accesso\n- Tecnico\n- Pagamenti\n- Informazioni\n- Reclamo\n- Altro\n\nPRIORITÀ:\n- Bassa\n- Media\n- Alta\n\nSENTIMENTO:\n- Positivo\n- Neutro\n- Negativo\n\nREGOLE RISPOSTA:\n- Deve essere SPECIFICA al problema\n- Niente frasi generiche tipo \"grazie per avermi informato\"\n- Niente saluti\n\nINPUT:\n\n{{$json.messaggio}}\n\nEMAIL:\n\nOggetto:\n{{$json.oggetto}}\n\nMessaggio:\n{{$json.messaggio}}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        -64,
+        -144
+      ],
+      "id": "10715dba-186d-4f6b-8197-cc5c0f5ecfaa",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        -64,
+        80
+      ],
+      "id": "353bcd1a-dc8a-4805-a687-7cfe40bab4b8",
+      "name": "Ollama Chat Model",
+      "credentials": {
+        "ollamaApi": {
+          "id": "ulqFOjga8rkA2FpB",
+          "name": "Ollama account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "table": {
+          "__rl": true,
+          "value": "email_ticket",
+          "mode": "list",
+          "cachedResultName": "email_ticket"
+        },
+        "dataMode": "defineBelow",
+        "valuesToSend": {
+          "values": [
+            {
+              "column": "mittente",
+              "value": "={{ $json.mittente }}"
+            },
+            {
+              "column": "oggetto",
+              "value": "={{ $json.oggetto }}"
+            },
+            {
+              "column": "messaggio",
+              "value": "={{ $json.messaggio }}"
+            },
+            {
+              "column": "categoria",
+              "value": "={{ $json.categoria }}"
+            },
+            {
+              "column": "priorita",
+              "value": "={{ $json.priorita }}"
+            },
+            {
+              "column": "sentimento",
+              "value": "={{ $json.sentimento }}"
+            },
+            {
+              "column": "risposta_ai",
+              "value": "={{ $json.risposta_ai }}"
+            },
+            {
+              "column": "stato",
+              "value": "={{ $json.stato }}"
+            },
+            {
+              "column": "data_ricezione",
+              "value": "={{ $now.toFormat(\"yyyy-LL-dd HH:mm:ss\") }}"
+            },
+            {
+              "column": "ticket_id",
+              "value": "={{ $json.ticket_id }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.mySql",
+      "typeVersion": 2.5,
+      "position": [
+        976,
+        -16
+      ],
+      "id": "5a48d301-6051-4bb7-9c54-6a4a774896bd",
+      "name": "Insert rows in a table",
+      "credentials": {
+        "mySql": {
+          "id": "k90uLl7BIXjETWKn",
+          "name": "MySQL account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{\n  json: {\n    mittente: $input.first().json.from,\n    oggetto: $input.first().json.subject,\n    messaggio: $input.first().json.textPlain\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -256,
+        0
+      ],
+      "id": "2b7c7682-07c3-4457-93ab-af9673f022a8",
+      "name": "Filtra dati mail"
+    },
+    {
+      "parameters": {
+        "jsCode": "let text = $json.output;\n\n// prova a trovare JSON anche se incompleto\nconst start = text.indexOf('{');\nconst end = text.lastIndexOf('}');\n\nif (start === -1) {\n  throw new Error(\"JSON non trovato\");\n}\n\n// se manca la chiusura, NON crashare\nlet jsonString = text.slice(start, end !== -1 ? end + 1 : undefined);\n\n// prova a riparare JSON incompleto\nif (!jsonString.endsWith('}')) {\n  jsonString += '}';\n}\n\nlet parsed;\n\ntry {\n  parsed = JSON.parse(jsonString);\n} catch (e) {\n  return [{\n    json: {\n      error: \"JSON non valido\",\n      raw: text\n    }\n  }];\n}\n\nreturn [{ json: parsed }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        256,
+        -144
+      ],
+      "id": "84cd5632-e0f7-45d1-b03c-bf8de8152c3b",
+      "name": "Parser output AI"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        464,
+        -16
+      ],
+      "id": "2b356f60-795c-4a09-9dc8-cecb5f5483cc",
+      "name": "Unisci dati"
+    },
+    {
+      "parameters": {
+        "jsCode": "return [\n  {\n    json: {\n      mittente: $json.mittente,\n      oggetto: $json.oggetto,\n      messaggio: $json.messaggio,\n      categoria: $json.categoria,\n      priorita: $json.priorita,\n      sentimento: $json.sentimento,\n      risposta_ai: $json.risposta,\n      stato: \"Aperto\",\n      data_ricezione: new Date().toISOString()\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        624,
+        -16
+      ],
+      "id": "b7b376c1-31ed-4b77-9bea-69afa45493fa",
+      "name": "Prepara dati per SQL"
+    },
+    {
+      "parameters": {
+        "jsCode": "const now = new Date();\n\n// data YYYYMMDD\nconst date =\n  now.getFullYear().toString() +\n  String(now.getMonth() + 1).padStart(2, \"0\") +\n  String(now.getDate()).padStart(2, \"0\");\n\n// orario HHMMSS\nconst time =\n  String(now.getHours()).padStart(2, \"0\") +\n  String(now.getMinutes()).padStart(2, \"0\") +\n  String(now.getSeconds()).padStart(2, \"0\");\n\n// ID random per evitare duplicati\nconst random = Math.floor(1000 + Math.random() * 9000);\n\nconst ticketId = `TCK-${date}-${time}-${random}`;\n\nreturn [\n  {\n    json: {\n      ...$json,\n      ticket_id: ticketId\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        800,
+        -16
+      ],
+      "id": "fa196c94-6ca7-450d-a72a-35ea60a01203",
+      "name": "Crea Ticket ID"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Email Trigger (IMAP)": {
+      "main": [
+        [
+          {
+            "node": "Filtra dati mail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Parser output AI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filtra dati mail": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Unisci dati",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Parser output AI": {
+      "main": [
+        [
+          {
+            "node": "Unisci dati",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Unisci dati": {
+      "main": [
+        [
+          {
+            "node": "Prepara dati per SQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepara dati per SQL": {
+      "main": [
+        [
+          {
+            "node": "Crea Ticket ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Crea Ticket ID": {
+      "main": [
+        [
+          {
+            "node": "Insert rows in a table",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "43d314bc-bc4f-4dd1-865c-ed7a7c77daca",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "0ee687de73a5ef6e8357f64fd043074a3b4dc0d8461daa4a404cc7d946c33ee3"
+  },
+  "id": "5gY0iTWPBMJ0SnKz",
+  "tags": []
+}
